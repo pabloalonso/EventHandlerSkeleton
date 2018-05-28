@@ -5,14 +5,10 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.bonitasoft.ps.util.Notifier;
-import org.bonitasoft.engine.core.process.instance.api.FlowNodeInstanceService;
-import org.bonitasoft.engine.core.process.instance.api.ProcessInstanceService;
-import org.bonitasoft.engine.core.process.instance.api.exceptions.SProcessInstanceNotFoundException;
-import org.bonitasoft.engine.core.process.instance.api.exceptions.SProcessInstanceReadException;
 import org.bonitasoft.engine.core.process.instance.model.SActivityInstance;
-import org.bonitasoft.engine.core.process.instance.model.SProcessInstance;
-import org.bonitasoft.engine.data.ParentContainerResolverImpl;
 import org.bonitasoft.engine.data.instance.api.DataInstanceService;
+import org.bonitasoft.engine.data.instance.exception.SDataInstanceException;
+import org.bonitasoft.engine.data.instance.model.SDataInstance;
 import org.bonitasoft.engine.events.model.SEvent;
 import org.bonitasoft.engine.events.model.SHandler;
 import org.bonitasoft.engine.events.model.SHandlerExecutionException;
@@ -27,6 +23,7 @@ import org.bonitasoft.engine.service.impl.ServiceAccessorFactory;
 public class TaskCompleteEventHandler implements SHandler<SEvent> {
     private static final TechnicalLogSeverity ERROR_SEVERITY = TechnicalLogSeverity.valueOf("ERROR");
     private static final String TASK = "task";
+    private static final String DATA_CONTAINER = "PROCESS";
     private final TechnicalLoggerService technicalLoggerService;
     private final Long tenantId;
     private TechnicalLogSeverity technicalLogSeverity;
@@ -59,8 +56,10 @@ public class TaskCompleteEventHandler implements SHandler<SEvent> {
                 SActivityInstance activityInstance = (SActivityInstance) eventObject;
 
                 data.put(variableName, getProcessData(activityInstance.getParentProcessInstanceId(), variableName));
-                data.put(TASK, getTaskData(activityInstance));
-
+                data.put(TASK, getTaskInfo(activityInstance));
+                if (technicalLoggerService.isLoggable(this.getClass(), technicalLogSeverity)) {
+                    technicalLoggerService.log(this.getClass(), technicalLogSeverity, "com.bonitasoft.ps.event.handler.TaskCompleteEventHandler: Notify: " + data.toString());
+                }
                 Notifier.notify(data);
             }
         }catch (Exception e){
@@ -71,10 +70,19 @@ public class TaskCompleteEventHandler implements SHandler<SEvent> {
         }
     }
 
-    private Object getProcessData(Long processInstanceId, String variableName) throws SHandlerExecutionException, SProcessInstanceNotFoundException, SProcessInstanceReadException {
+    private Object getTaskInfo(SActivityInstance activityInstance) {
+        Map<String, Object> info = new HashMap<>();
+        info.put("name", activityInstance.getName());
+        info.put("displayName", activityInstance.getDisplayName());
+        info.put("completedOn", System.currentTimeMillis());
+        return info;
+    }
+
+    private Object getProcessData(Long processInstanceId, String variableName) throws SHandlerExecutionException, SDataInstanceException {
         DataInstanceService dataInstanceService = getTenantServiceAccessor().getDataInstanceService();
-        dataInstanceService.get
-        dataInstanceService.getDataInstance(variableName, processInstanceId, "PROCESS", new ParentContainerResolverImpl(flowNodeInstanceService, processInstanceService))
+        SDataInstance dataInstance = dataInstanceService.getLocalDataInstance(variableName, processInstanceId, DATA_CONTAINER);
+        return dataInstance.getValue();
+        //dataInstanceService.getDataInstance(variableName, processInstanceId, "PROCESS", new ParentContainerResolverImpl(flowNodeInstanceService, processInstanceService))
 
 
     }
