@@ -1,0 +1,18 @@
+<bean id="EventHandlerSkeleton" class="com.bonitasoft.ps.event.handler.TaskCompleteEventHandler">
+    <!-- add logging service -->
+    <constructor-arg name="technicalLoggerService" ref="tenantTechnicalLoggerService" />
+    <constructor-arg name="loggerSeverity" value="WARNING"/>
+    <constructor-arg name="variableName" value="datos2"/>
+    <constructor-arg name="tenantId" value="1"/>
+</bean>
+
+<bean id="eventHandlers" class="org.springframework.beans.factory.config.MapFactoryBean">
+<property name="targetMapClass">
+    <value>java.util.HashMap</value>
+</property>
+<property name="sourceMap">
+    <map>
+        <entry key="ACTIVITYINSTANCE_STATE_UPDATED" value-ref="EventHandlerSkeleton"/>
+    </map>
+</property>
+</bean>

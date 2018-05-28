@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.bonitasoft.ps.util.Notifier;
+import org.bonitasoft.engine.bpm.flownode.ActivityStates;
 import org.bonitasoft.engine.core.process.instance.model.SActivityInstance;
 import org.bonitasoft.engine.data.instance.api.DataInstanceService;
 import org.bonitasoft.engine.data.instance.exception.SDataInstanceException;
@@ -23,11 +24,12 @@ import org.bonitasoft.engine.service.impl.ServiceAccessorFactory;
 public class TaskCompleteEventHandler implements SHandler<SEvent> {
     private static final TechnicalLogSeverity ERROR_SEVERITY = TechnicalLogSeverity.valueOf("ERROR");
     private static final String TASK = "task";
-    private static final String DATA_CONTAINER = "PROCESS";
+    private static final String DATA_CONTAINER = "PROCESS_INSTANCE";
     private final TechnicalLoggerService technicalLoggerService;
     private final Long tenantId;
     private TechnicalLogSeverity technicalLogSeverity;
     private final String variableName;
+    private static final String ACTIVITYINSTANCE_CLOSED = "ACTIVITYINSTANCE_STATE_UPDATED";
 
 
     public TaskCompleteEventHandler (TechnicalLoggerService technicalLoggerService, String loggerSeverity, String variableName, long tenantId) {
@@ -46,7 +48,7 @@ public class TaskCompleteEventHandler implements SHandler<SEvent> {
     public void execute(SEvent sEvent) throws SHandlerExecutionException {
         try {
             if (technicalLoggerService.isLoggable(this.getClass(), technicalLogSeverity)) {
-                technicalLoggerService.log(this.getClass(), technicalLogSeverity, "com.bonitasoft.ps.event.handler.TaskCompleteEventHandler: executing event " + sEvent.getType());
+                technicalLoggerService.log(this.getClass(), technicalLogSeverity, "TaskCompleteEventHandler: executing event " + sEvent.getType());
             }
 
             Map<String, Object> data = new HashMap<>();
@@ -54,18 +56,19 @@ public class TaskCompleteEventHandler implements SHandler<SEvent> {
 
             if (eventObject instanceof SActivityInstance) {
                 SActivityInstance activityInstance = (SActivityInstance) eventObject;
-
-                data.put(variableName, getProcessData(activityInstance.getParentProcessInstanceId(), variableName));
+                data.put(variableName, getProcessData(activityInstance.getRootProcessInstanceId(), variableName));
                 data.put(TASK, getTaskInfo(activityInstance));
                 if (technicalLoggerService.isLoggable(this.getClass(), technicalLogSeverity)) {
-                    technicalLoggerService.log(this.getClass(), technicalLogSeverity, "com.bonitasoft.ps.event.handler.TaskCompleteEventHandler: Notify: " + data.toString());
+                    technicalLoggerService.log(this.getClass(), technicalLogSeverity, "TaskCompleteEventHandler: Notify: " + data.toString());
                 }
                 Notifier.notify(data);
+
             }
         }catch (Exception e){
             // In case of exception we write in the log
             if (technicalLoggerService.isLoggable(this.getClass(), technicalLogSeverity)) {
-                technicalLoggerService.log(this.getClass(),ERROR_SEVERITY , "com.bonitasoft.ps.event.handler.TaskCompleteEventHandler: ERROR executing event " + sEvent);
+                technicalLoggerService.log(this.getClass(),ERROR_SEVERITY , "TaskCompleteEventHandler: ERROR executing event " + sEvent, e);
+
             }
         }
     }
@@ -78,32 +81,36 @@ public class TaskCompleteEventHandler implements SHandler<SEvent> {
         return info;
     }
 
-    private Object getProcessData(Long processInstanceId, String variableName) throws SHandlerExecutionException, SDataInstanceException {
-        DataInstanceService dataInstanceService = getTenantServiceAccessor().getDataInstanceService();
-        SDataInstance dataInstance = dataInstanceService.getLocalDataInstance(variableName, processInstanceId, DATA_CONTAINER);
-        return dataInstance.getValue();
-        //dataInstanceService.getDataInstance(variableName, processInstanceId, "PROCESS", new ParentContainerResolverImpl(flowNodeInstanceService, processInstanceService))
-
-
+    private Object getProcessData(Long processInstanceId, String variableName) throws Exception {
+        try {
+            DataInstanceService dataInstanceService = getTenantServiceAccessor().getDataInstanceService();
+            SDataInstance dataInstance = dataInstanceService.getLocalDataInstance(variableName, processInstanceId, DATA_CONTAINER);
+            return dataInstance.getValue();
+        }catch(SDataInstanceException sdie){
+            throw new Exception ("Variable "+variableName + " could not be retrieved from process insntance " + processInstanceId+". Error: " +sdie.getMessage());
+        }
     }
 
     @Override
     public boolean isInterested(SEvent sEvent) {
         try{
-            if (technicalLoggerService.isLoggable(this.getClass(), technicalLogSeverity)) {
-                technicalLoggerService.log(this.getClass(), technicalLogSeverity,
-                        "com.bonitasoft.ps.event.handler.TaskCompleteEventHandler - event "
-                                + sEvent.getType()
-                                + " - asks if we are interested in handling this event instance");
+            Object eventObject = sEvent.getObject();
+            if (eventObject instanceof SActivityInstance) {
+                SActivityInstance activityInstance = (SActivityInstance) eventObject;
+                if(sEvent.getType().equals(ACTIVITYINSTANCE_CLOSED)) {
+                    if (activityInstance.getStateName().equals(ActivityStates.COMPLETED_STATE)) {
+                        return true;
+                    }
+                }
             }
         }catch (Exception e){
             // In case of exception we write in the log
             if (technicalLoggerService.isLoggable(this.getClass(), technicalLogSeverity)) {
-                technicalLoggerService.log(this.getClass(),ERROR_SEVERITY , "com.bonitasoft.ps.event.handler.TaskCompleteEventHandler: ERROR evaluating event " + sEvent);
+                technicalLoggerService.log(this.getClass(),ERROR_SEVERITY , "TaskCompleteEventHandler: ERROR evaluating event " + sEvent, e);
             }
             return false;
         }
-        return true;
+        return false;
     }
 
     @Override
